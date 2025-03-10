@@ -1,33 +1,32 @@
-FROM node:21-slim as builder
+FROM node:21-bullseye-slim as builder
 
 WORKDIR /app
 
-RUN npm install -g pnpm
+RUN corepack enable && corepack prepare pnpm@latest --activate
+ENV PNPM_HOME=/usr/local/bin
 
-COPY package.json-lock.yaml ./
-
-RUN pnpm install --frozen-lockfile --prefer-offline
+COPY package*.json *-lock.yaml ./
+RUN pnpm install
 
 COPY . .
 
 RUN pnpm run build
 
-FROM node:21-slim as deploy
+FROM node:21-bullseye-slim as deploy
 
 WORKDIR /app
 
-ARG PORT=3000
+ARG PORT
 ENV PORT $PORT
 EXPOSE $PORT
 
+COPY --from=builder /app/public ./public
 COPY --from=builder /app/dist ./dist
-COPY --from=builder /app/package.json-lock.yaml ./
+COPY --from=builder /app/*.json /app/*-lock.yaml ./
 
-RUN pnpm install --production --ignore-scripts --prefer-offline && npm cache clean --force
+RUN corepack enable && corepack prepare pnpm@latest --activate 
+ENV PNPM_HOME=/usr/local/bin
 
-RUN addgroup -g 1001 -S nodejs && adduser -S -u 1001 nodejs \
-    && rm -rf /usr/local/bin/.npm /usr/local/bin/.node-gyp
+RUN pnpm install --production --ignore-scripts
 
-RUN pnpm add -g pm2
-
-CMD ["pm2-runtime", "start", "dist/app.js"]
+CMD ["npm", "start"]
